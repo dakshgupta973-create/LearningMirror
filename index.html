@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LearningMirror</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">LearningMirror <small id="brandSub"></small></div>
+    <select id="langSel" class="langsel"></select>
+  </div>
+
+  <!-- HOME -->
+  <section id="home" class="screen show">
+    <h1 id="homeTitle"></h1>
+    <p class="lead" id="homeLead"></p>
+    <span class="pill" id="agePill"></span>
+    <div class="agegrid" id="ageGrid"></div>
+    <div class="navrow">
+      <button class="btn primary" id="startBtn" onclick="startTest()" disabled></button>
+    </div>
+    <p class="note" id="homeNote"></p>
+  </section>
+
+  <!-- QUIZ (core + routed set, one continuous flow) -->
+  <section id="quiz" class="screen">
+    <div class="prog"><i id="progBar"></i></div>
+    <div style="display:flex; justify-content:space-between; align-items:center">
+      <span class="pill" id="qPhase"></span>
+      <span class="qcount" id="qCount"></span>
+    </div>
+    <div class="qtext" id="qText"></div>
+    <div class="opts" id="qOpts"></div>
+    <div class="navrow">
+      <button class="btn ghost" id="backBtn" onclick="prevQ()">←</button>
+      <button class="btn primary" id="nextBtn" onclick="nextQ()" disabled></button>
+    </div>
+    <p class="note" id="quizNote"></p>
+  </section>
+
+  <!-- TASK (interactive activity, one per SLD set) -->
+  <section id="task" class="screen">
+    <span class="pill" id="taskPill"></span>
+    <div id="taskBody"></div>
+  </section>
+
+  <!-- LOADING -->
+  <section id="loading" class="screen">
+    <div class="center">
+      <div class="spin"></div>
+      <div id="loadText" style="font-weight:600"></div>
+      <div class="note" id="loadSub"></div>
+    </div>
+  </section>
+
+  <!-- RESULT -->
+  <section id="result" class="screen">
+    <div id="resultBody"></div>
+    <div class="navrow" style="margin-top:22px">
+      <button class="btn ghost" onclick="goResources()" id="resBtn" style="flex:1"></button>
+      <button class="btn primary" onclick="restart()" id="restartBtn"></button>
+    </div>
+  </section>
+
+  <!-- RESOURCES -->
+  <section id="resources" class="screen">
+    <h1 id="resTitle" style="font-size:22px"></h1>
+    <p class="lead" id="resLead"></p>
+    <div id="resList"></div>
+    <div class="navrow" style="margin-top:8px">
+      <button class="btn primary" onclick="show('result')" id="resBack"></button>
+    </div>
+  </section>
+
+  <div class="footer-mini" id="footMini"></div>
+</div>
+
+<script src="config.js"></script>
+<script src="questions.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
