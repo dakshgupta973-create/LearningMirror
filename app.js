@@ -24,6 +24,12 @@ function apiKey(){
   if(typeof ANTHROPIC_API_KEY !== "undefined" && ANTHROPIC_API_KEY && ANTHROPIC_API_KEY !== "PASTE_YOUR_API_KEY_HERE") return ANTHROPIC_API_KEY;
   try{ return localStorage.getItem("lm_key") || ""; }catch(e){ return ""; }
 }
+function aiReady(){ return (typeof PROXY_URL !== "undefined" && PROXY_URL) || !!apiKey(); }
+function aiUrl(){ return (typeof PROXY_URL !== "undefined" && PROXY_URL) ? PROXY_URL : "https://api.anthropic.com/v1/messages"; }
+function aiHeaders(){
+  if(typeof PROXY_URL !== "undefined" && PROXY_URL) return {"content-type":"application/json"};
+  return {"content-type":"application/json","x-api-key":apiKey(),"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"};
+}
 function renderKeyPrompt(onDone){
   const body = document.getElementById('resultBody');
   body.innerHTML = `<div class="result-h">One-time setup</div>
@@ -79,7 +85,7 @@ async function ensureLang(code){
     const cached = localStorage.getItem("lm_tr1_"+code);
     if(cached){ mergeLang(code, JSON.parse(cached)); return true; }
   }catch(e){}
-  if(!apiKey()) return false;
+  if(!aiReady()) return false;
   const L = LANGS.find(x=>x.code===code); if(!L) return false;
   const bundle = {
     ui: UI.en,
@@ -93,14 +99,9 @@ async function ensureLang(code){
   try{
     const ctrl = new AbortController();
     const killer = setTimeout(()=>ctrl.abort(), 360000);   // hard stop after 6 min
-    const res = await fetch("https://api.anthropic.com/v1/messages",{
+    const res = await fetch(aiUrl(),{
       method:"POST", signal:ctrl.signal,
-      headers:{
-        "content-type":"application/json",
-        "x-api-key":apiKey(),
-        "anthropic-version":"2023-06-01",
-        "anthropic-dangerous-direct-browser-access":"true"
-      },
+      headers: aiHeaders(),
       body:JSON.stringify({
         model:MODEL, max_tokens:12000, stream:true,
         system:`You translate a parenting app about children's learning into ${L.name}. Translate EVERY string value in the JSON the user sends into simple, warm, everyday ${L.name} that a parent with basic schooling understands — the register a kind school teacher would use, not formal or literary language. Keep the exact same JSON structure, keys, and array lengths. Do not translate: the name "LearningMirror", phone numbers, "API", emoji, or symbols like ▶ ✓ 📞. Keep helpline names recognisable (transliterate). Reading passages and copy sentences should be culturally natural in ${L.name}, age-appropriate, and roughly the same length — adapt rather than translate word-for-word. Return ONLY the JSON.`,
@@ -148,7 +149,7 @@ async function setLang(l){
   if(!UI[l]){
     let cached = false;
     try{ cached = !!localStorage.getItem("lm_tr1_"+l); }catch(e){}
-    if(!cached && !apiKey()){
+    if(!cached && !aiReady()){
       renderKeyPrompt(()=>{ show('home'); setLang(l); });
       renderLangSel();
       return;
@@ -271,18 +272,13 @@ async function routeToSet(){
   document.getElementById('loadSub').textContent = t().routeSub;
 
   let chosen = ruleRoute(); // safe default
-  if(apiKey()){
+  if(aiReady()){
     try{
       const ctrl = new AbortController();
       const timer = setTimeout(()=>ctrl.abort(), 8000);
-      const res = await fetch("https://api.anthropic.com/v1/messages",{
+      const res = await fetch(aiUrl(),{
         method:"POST", signal:ctrl.signal,
-        headers:{
-          "content-type":"application/json",
-          "x-api-key":apiKey(),
-          "anthropic-version":"2023-06-01",
-          "anthropic-dangerous-direct-browser-access":"true"
-        },
+        headers: aiHeaders(),
         body:JSON.stringify({
           model:MODEL, max_tokens:60,
           system:'You route a learning-difficulties screening. Based on 6 parent answers, pick which question set the parent should get next: "A" (reading difficulties), "B" (writing difficulties), "C" (maths difficulties), "D" (attention difficulties). Weigh the area-specific signals most; general signals (memory, teacher concern) support the strongest area. Reply with ONLY JSON: {"set":"A"}',
@@ -638,19 +634,14 @@ async function submit(){
   document.getElementById('loadText').textContent = t().loadText;
   document.getElementById('loadSub').textContent = t().loadSub;
 
-  if(!apiKey()){
+  if(!aiReady()){
     renderKeyPrompt();
     return;
   }
   try{
-    const res = await fetch("https://api.anthropic.com/v1/messages",{
+    const res = await fetch(aiUrl(),{
       method:"POST",
-      headers:{
-        "content-type":"application/json",
-        "x-api-key":apiKey(),
-        "anthropic-version":"2023-06-01",
-        "anthropic-dangerous-direct-browser-access":"true"
-      },
+      headers: aiHeaders(),
       body:JSON.stringify({
         model:MODEL, max_tokens:1100,
         system:SYSTEM_PROMPT,
