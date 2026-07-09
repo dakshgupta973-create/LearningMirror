@@ -650,7 +650,11 @@ async function submit(){
           : buildPrompt()}]
       })
     });
-    if(!res.ok){ throw new Error("HTTP "+res.status); }
+    if(!res.ok){
+      let detail = "HTTP "+res.status;
+      try{ const eb = await res.json(); detail += ": "+((eb.error&&eb.error.message)||JSON.stringify(eb)).slice(0,200); }catch(e){}
+      throw new Error(detail);
+    }
     const data = await res.json();
     let txt = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text : "";
     txt = txt.replace(/```json/gi,"").replace(/```/g,"").trim();
@@ -659,7 +663,7 @@ async function submit(){
     renderResult(parsed);
     show('result');
   }catch(e){
-    renderError(t().errBody);
+    renderError(t().errBody + "\n\nReason: " + String(e.message||e).slice(0,250));
   }
 }
 
