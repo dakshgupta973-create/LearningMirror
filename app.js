@@ -301,6 +301,36 @@ async function routeToSet(){
   renderQ();
 }
 
+function pick(p){ return Array.isArray(p) ? p[Math.floor(Math.random()*p.length)] : p; }
+function rnd(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+function genMaths(band){
+  const items = [];
+  for(let i=0;i<2;i++){
+    let x = rnd(band?7:3, band?14:8), y;
+    do{ y = rnd(band?7:3, band?14:8); }while(Math.abs(x-y) < 2);
+    items.push({t:"dots", a:x, b:y});
+  }
+  function sum(q, ans){
+    const opts = [ans];
+    while(opts.length < 3){
+      const d = ans + (Math.random()<0.5?-1:1) * rnd(1,3);
+      if(d >= 0 && !opts.includes(d)) opts.push(d);
+    }
+    for(let i=opts.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [opts[i],opts[j]]=[opts[j],opts[i]]; }
+    items.push({t:"sum", q:q, opts:opts, ans:ans});
+  }
+  if(band===0){
+    let a1=rnd(1,4), b1=rnd(1,5);            sum(a1+" + "+b1, a1+b1);
+    let a2=rnd(4,9), b2=rnd(1,3);            sum(a2+" \u2212 "+b2, a2-b2);
+    let a3=rnd(2,5), b3=rnd(2,5);            sum(a3+" + "+b3, a3+b3);
+  }else{
+    let a1=rnd(6,9), b1=rnd(5,9);            sum(a1+" + "+b1, a1+b1);
+    let a2=rnd(12,20), b2=rnd(3,9);          sum(a2+" \u2212 "+b2, a2-b2);
+    let a3=rnd(2,6), b3=rnd(3,6);            sum(a3+" \u00d7 "+b3, a3*b3);
+  }
+  return items;
+}
+
 /* ---------- INTERACTIVE TASK ENGINE ---------- */
 function startTask(){
   taskData = null; taskImage = null;
@@ -315,9 +345,12 @@ function startTask(){
 function skipBtn(){ return `<button class="btn ghost" style="flex:1" onclick="finishTask({skipped:true})">${esc(tt().skip)}</button>`; }
 function finishTask(data){ taskData = data; submit(); }
 
-/* Task A — timed read-aloud (dyslexia: fluency) */
+/* Task A — timed read-aloud with SPEECH RECOGNITION (dyslexia: fluency & accuracy).
+   The phone listens while the child reads and compares against the passage.
+   If the mic is unavailable, falls back to asking the parent. */
 function renderTaskA(b){
-  const passage = TASKCONTENT.passages[ageBand()][lang] || TASKCONTENT.passages[ageBand()].en;
+  const pool = TASKCONTENT.passages[ageBand()][lang] || TASKCONTENT.passages[ageBand()].en;
+  const passage = pick(pool);
   const words = passage.split(/\s+/).filter(Boolean).length;
   b.innerHTML = `<div class="taskh">${esc(tt().A_title)}</div>
     <p class="tasklead">${esc(tt().A_lead)}</p>
@@ -325,7 +358,13 @@ function renderTaskA(b){
     <div class="bigtime" id="clock" style="display:none">0.0</div>
     <div class="navrow"><button class="btn primary" id="taskGo">${esc(tt().A_start)}</button></div>
     <div class="navrow" id="skipRow">${skipBtn()}</div>`;
-  let t0=null, timer=null;
+  let t0=null, timer=null, rec=null, transcript="";
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  function strugglesFallback(seconds){
+    // Mic/recognition unavailable — continue with timing only. No parent question.
+    finishTask({type:"reading", words:words, seconds:seconds,
+      wcpm: Math.round(words/(seconds/60)), speechRecognized:false, note:"mic unavailable - timing only"});
+  }
   document.getElementById('taskGo').onclick = function(){
     if(t0===null){
       t0 = Date.now();
@@ -334,138 +373,47 @@ function renderTaskA(b){
       c.style.display = "";
       document.getElementById('skipRow').style.display = "none";
       timer = setInterval(()=>{ c.textContent = ((Date.now()-t0)/1000).toFixed(1); }, 100);
+      if(SR){
+        try{
+          rec = new SR();
+          rec.lang = ({hi:"hi-IN",en:"en-IN",bn:"bn-IN",ta:"ta-IN",te:"te-IN",mr:"mr-IN",gu:"gu-IN",kn:"kn-IN",ml:"ml-IN",pa:"pa-IN",ur:"ur-IN"})[lang] || "en-IN";
+          rec.continuous = true;
+          rec.interimResults = false;
+          rec.onresult = e=>{ for(let i=e.resultIndex;i<e.results.length;i++) if(e.results[i].isFinal) transcript += " " + e.results[i][0].transcript; };
+          rec.onerror = ()=>{};
+          rec.start();
+        }catch(e){ rec = null; }
+      }
     } else {
       clearInterval(timer);
       const seconds = Math.round((Date.now()-t0)/10)/100;
-      b.innerHTML = `<div class="taskh">${esc(tt().A_strug)}</div><div class="opts" id="strugOpts"></div>`;
-      const wrap = document.getElementById('strugOpts');
-      tt().A_strugOpts.forEach((o,i)=>{
-        const bt = document.createElement('button');
-        bt.className = "opt";
-        bt.innerHTML = `<span class="dot"></span><span>${esc(o)}</span>`;
-        bt.onclick = ()=> finishTask({type:"reading", words:words, seconds:seconds,
-          wcpm: Math.round(words/(seconds/60)), struggles:["0-2","3-5","6+"][i]});
-        wrap.appendChild(bt);
-      });
+      if(rec){ try{ rec.stop(); }catch(e){} }
+      setTimeout(()=>{
+        const clean = s => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu," ").split(/\s+/).filter(Boolean);
+        const heard = clean(transcript);
+        if(heard.length >= 3){
+          const target = clean(passage);
+          const bag = {};
+          heard.forEach(w=>{ bag[w]=(bag[w]||0)+1; });
+          let matched = 0;
+          target.forEach(w=>{ if(bag[w]>0){ matched++; bag[w]--; } });
+          finishTask({type:"reading", words:words, seconds:seconds,
+            wcpm: Math.round(words/(seconds/60)),
+            speechRecognized:true,
+            wordsReadCorrectly: matched,
+            accuracyPct: Math.round(100*matched/target.length)});
+        } else {
+          strugglesFallback(seconds);
+        }
+      }, 800);
     }
   };
-}
-
-/* ---------- TRAINED HANDWRITING MODEL (Daksh's CNN, TensorFlow.js) ----------
-   Trained on the Synthetic Dyslexia Handwriting Dataset (~138k letters,
-   classes: Normal / Reversal / Corrected). Runs fully in the browser —
-   the child's handwriting never leaves the phone.
-   NOTE: loading local model files requires the site to be served over
-   http(s) (e.g. GitHub Pages, or `python -m http.server`). When opened
-   as a plain file, the model silently skips and Claude vision alone is used. */
-let hwModel = null, hwClasses = null, hwDataUrl = null;
-function loadScript(src){ return new Promise((res, rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
-async function loadHwModel(){
-  if(hwModel) return true;
-  try{
-    if(typeof tf === "undefined") await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js");
-    hwModel = await tf.loadLayersModel("tfjs_model/model.json");
-    hwClasses = await (await fetch("tfjs_model/class_names.json")).json();
-    return true;
-  }catch(e){ hwModel = null; return false; }
-}
-
-/* Cut the photo into individual letters (threshold + connected components) */
-function segmentLetters(img){
-  const maxW = 1000, sc = Math.min(1, maxW/img.width);
-  const cv = document.createElement('canvas');
-  cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
-  const cx = cv.getContext('2d');
-  cx.drawImage(img, 0, 0, cv.width, cv.height);
-  const W = cv.width, H = cv.height;
-  const px = cx.getImageData(0, 0, W, H).data;
-  const gray = new Uint8Array(W*H);
-  const hist = new Array(256).fill(0);
-  for(let i=0;i<W*H;i++){ const g = (px[i*4]*0.3 + px[i*4+1]*0.59 + px[i*4+2]*0.11)|0; gray[i]=g; hist[g]++; }
-  // Otsu threshold
-  let total=W*H, sum=0; for(let t=0;t<256;t++) sum += t*hist[t];
-  let sumB=0, wB=0, best=0, thr=127;
-  for(let t=0;t<256;t++){
-    wB += hist[t]; if(!wB) continue;
-    const wF = total-wB; if(!wF) break;
-    sumB += t*hist[t];
-    const mB = sumB/wB, mF = (sum-sumB)/wF, v = wB*wF*(mB-mF)*(mB-mF);
-    if(v>best){ best=v; thr=t; }
-  }
-  const bin = new Uint8Array(W*H);
-  for(let i=0;i<W*H;i++) bin[i] = gray[i] < thr ? 1 : 0;   // ink = dark
-  // connected components (iterative flood fill)
-  const seen = new Uint8Array(W*H); const boxes = [];
-  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
-    const i0 = y*W+x;
-    if(!bin[i0] || seen[i0]) continue;
-    let minX=x, maxX=x, minY=y, maxY=y, area=0;
-    const stack=[i0]; seen[i0]=1;
-    while(stack.length){
-      const i = stack.pop(); area++;
-      const iy=(i/W)|0, ix=i%W;
-      if(ix<minX)minX=ix; if(ix>maxX)maxX=ix; if(iy<minY)minY=iy; if(iy>maxY)maxY=iy;
-      const nb=[i-1,i+1,i-W,i+W];
-      for(const n of nb){ if(n>=0 && n<W*H && bin[n] && !seen[n] && Math.abs((n%W)-ix)<=1){ seen[n]=1; stack.push(n); } }
-    }
-    const bw=maxX-minX+1, bh=maxY-minY+1;
-    if(bw>=8 && bh>=12 && bh<=H*0.6 && area>=50 && bw/bh<8 && bh/bw<8)
-      boxes.push({x:minX, y:minY, w:bw, h:bh, area:area});
-  }
-  boxes.sort((a,b)=>b.area-a.area);
-  return {canvas:cv, boxes:boxes.slice(0,40)};
-}
-
-async function analyseHandwriting(){
-  const ok = await loadHwModel();
-  if(!ok || !hwDataUrl) return null;
-  return new Promise(resolve=>{
-    const img = new Image();
-    img.onload = ()=>{
-      try{
-        const {canvas, boxes} = segmentLetters(img);
-        if(!boxes.length){ resolve({lettersAnalysed:0, note:"no letters detected"}); return; }
-        const cx = canvas.getContext('2d');
-        const crops = [];
-        for(const b of boxes){
-          const pad = Math.round(Math.max(b.w,b.h)*0.15);
-          const side = Math.max(b.w,b.h) + 2*pad;
-          const c2 = document.createElement('canvas'); c2.width=96; c2.height=96;
-          const c2x = c2.getContext('2d');
-          c2x.fillStyle="#fff"; c2x.fillRect(0,0,96,96);
-          const dx = (side-b.w)/2, dy = (side-b.h)/2;
-          c2x.drawImage(canvas, b.x, b.y, b.w, b.h, dx*96/side, dy*96/side, b.w*96/side, b.h*96/side);
-          const d = c2x.getImageData(0,0,96,96).data;
-          const arr = new Float32Array(96*96);
-          for(let i=0;i<96*96;i++){ const g=(d[i*4]*0.3+d[i*4+1]*0.59+d[i*4+2]*0.11); arr[i] = 255-g; } // invert: ink → bright (matches training data)
-          crops.push(arr);
-        }
-        const t = tf.tidy(()=> tf.tensor(crops).reshape([crops.length,96,96,1]));
-        hwModel.predict(t).array().then(preds=>{
-          t.dispose();
-          const counts = {}; hwClasses.forEach(c=>counts[c]=0);
-          let confSum = 0;
-          preds.forEach(p=>{ const k = p.indexOf(Math.max(...p)); counts[hwClasses[k]]++; confSum += Math.max(...p); });
-          const n = preds.length;
-          resolve({
-            lettersAnalysed: n,
-            counts: counts,
-            reversalPct: Math.round(100*(counts["Reversal"]||0)/n),
-            correctedPct: Math.round(100*(counts["Corrected"]||0)/n),
-            avgConfidence: Math.round(100*confSum/n),
-            model: "custom CNN (browser), trained on Synthetic Dyslexia Handwriting Dataset"
-          });
-        }).catch(()=>resolve(null));
-      }catch(e){ resolve(null); }
-    };
-    img.src = hwDataUrl;
-  });
 }
 
 /* Task B — handwriting photo (dysgraphia: vision-model analysis) */
 function renderTaskB(b){
   loadHwModel(); // start fetching the model in the background
-  const sentence = TASKCONTENT.copySentence[ageBand()][lang] || TASKCONTENT.copySentence[ageBand()].en;
+  const sentence = pick(TASKCONTENT.copySentence[ageBand()][lang] || TASKCONTENT.copySentence[ageBand()].en);
   b.innerHTML = `<div class="taskh">${esc(tt().B_title)}</div>
     <p class="tasklead">${esc(tt().B_lead)}</p>
     <div class="passage">${esc(sentence)}</div>
@@ -480,11 +428,11 @@ function renderTaskB(b){
     const rd = new FileReader();
     rd.onload = e=>{ img.src = e.target.result; };
     img.onload = ()=>{
-      const maxW = 1200, sc = Math.min(1, maxW/img.width);
+      const maxW = 900, sc = Math.min(1, maxW/img.width);
       const cv = document.createElement('canvas');
       cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
       cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-      const durl = cv.toDataURL('image/jpeg',0.8);
+      const durl = cv.toDataURL('image/jpeg',0.65);
       hwDataUrl = durl;
       taskImage = {media_type:"image/jpeg", data:durl.split(",")[1]};
       const pv = document.getElementById('hwPrev');
@@ -508,7 +456,7 @@ function renderTaskC(b){
     <div class="navrow"><button class="btn primary" id="mGo">${esc(tt().C_go)}</button></div>
     <div class="navrow">${skipBtn()}</div>`;
   document.getElementById('mGo').onclick = ()=>{
-    const items = TASKCONTENT.maths[ageBand()];
+    const items = genMaths(ageBand());
     const results = [];
     let i = 0, t0 = 0;
     function next(){
@@ -597,7 +545,7 @@ const SYSTEM_PROMPT = `You are a gentle screening-analysis tool for LearningMirr
 You receive: (1) six general observation answers, (2) eight answers from a focused question set chosen adaptively for this child, with the pattern that set screens for, (3) scores (Always=3, Often=2, Sometimes=1, Never=0; set maximum 24), and (4) an objective task result. Higher set totals mean the pattern is more strongly present. As a guide: 60%+ of maximum = clear pattern worth acting on; 40-59% = mild pattern worth watching and re-checking; below 40% = not strongly indicated.
 
 TASK DATA (weigh together with the questionnaire; if skipped, rely on the questionnaire alone):
-- reading: words, seconds, words-correct-per-minute (wcpm), parent-reported struggles. Rough oral-reading-fluency guides: ages 5-7 ~30-60 wcpm; ages 8-10 ~60-100 wcpm. Well below the range, or many struggles, supports a reading-difficulty pattern.
+- reading: words, seconds, wcpm. If speechRecognized is true, the phone listened while the child read: wordsReadCorrectly and accuracyPct compare the child's speech against the passage (speech recognition is imperfect - treat accuracy below ~60% as a signal, not proof). If false, the microphone was unavailable and only timing data exists. Rough oral-reading-fluency guides: ages 5-7 ~30-60 wcpm; ages 8-10 ~60-100 wcpm. Well below range, or low accuracy, supports a reading-difficulty pattern.
 - handwriting: an image of the child copying a known sentence is attached. Examine it for letter reversals/mirroring, very uneven letter size, floating above/below the line, unusual spacing, omitted letters or matras, overall legibility. Describe what you see in plain parent language. If more than about a quarter is unreadable, that strongly supports a writing-difficulty pattern. If "modelFindings" is present, it comes from a custom CNN classifier (trained on ~138,000 handwriting samples, classes Normal/Reversal/Corrected) that analysed each detected letter: use lettersAnalysed, counts and reversalPct as a second opinion alongside your own reading of the image. The model is letter-level and approximate — if it conflicts with what you clearly see, trust your own reading and say so gently.
 - maths: per-item correctness and response times (ms). Many errors on dot-comparison (magnitude) items, or very slow/erratic times on simple sums for age, support a maths-difficulty pattern.
 - attention: go/no-go game — hits, misses, falseTaps, mean reaction time and its variability (rtSD). Many false taps and highly variable reaction times support an attention-difficulty pattern.
@@ -618,6 +566,7 @@ Return ONLY valid JSON, no extra text, in this exact shape:
   "meaning": "2-3 warm sentences explaining what this pattern means in everyday terms, reassuring and non-scary.",
   "strengths": ["3 short plain-language strengths the child is likely to have"],
   "steps": ["3 to 5 short, concrete things the parent can do at home today"],
+  "homeAdvice": ["5 short practical tips for the help page, tailored to THIS child's specific pattern — e.g. reading tips for a reading flag, writing-strengthening for a writing flag"],
   "summary": "one warm plain-language paragraph for the parent."
 }
 Translate ALL of the above field values into the requested language.`;
@@ -714,8 +663,9 @@ function renderResources(){
   document.getElementById('resLead').textContent = t().resLead;
   document.getElementById('resBack').textContent = t().resBack;
   let html = "";
+  const tips = (lastResult && lastResult.homeAdvice && lastResult.homeAdvice.length) ? lastResult.homeAdvice : t().advice;
   html += `<div class="advice"><h3>${esc(t().adviceTitle)}</h3><ul class="clean">`;
-  t().advice.forEach(a=> html += `<li><span class="n">✓</span><span>${esc(a)}</span></li>`);
+  tips.forEach(a=> html += `<li><span class="n">✓</span><span>${esc(a)}</span></li>`);
   html += `</ul></div>`;
   html += `<div class="ressub">${esc(t().helplinesTitle)}</div>`;
   R.helplines.forEach(r=>{
