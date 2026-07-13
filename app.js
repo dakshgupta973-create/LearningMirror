@@ -15,6 +15,8 @@ let setAnswers = [];
 let lastResult = null;
 let taskData = null;        // machine-measured task result
 let taskImage = null;       // {media_type, data} for handwriting photo
+let bonusOffered = false;   // second-modality game offered?
+let primaryTask = null;     // first task's data while bonus runs
 const TOTAL_Q = CORE.length + 8;
 function ageBand(){ return childAge<=7 ? 0 : 1; }
 function tt(){ return TASKTEXT[lang] || TASKTEXT.en; }
@@ -343,7 +345,26 @@ function startTask(){
   show('task');
 }
 function skipBtn(){ return `<button class="btn ghost" style="flex:1" onclick="finishTask({skipped:true})">${esc(tt().skip)}</button>`; }
-function finishTask(data){ taskData = data; submit(); }
+function finishTask(data){
+  if(!bonusOffered && !data.skipped && data.type && routedSet !== "D"){
+    bonusOffered = true;
+    primaryTask = data;
+    renderBonusOffer();
+    return;
+  }
+  taskData = data; submit();
+}
+function renderBonusOffer(){
+  const b = document.getElementById('taskBody');
+  const s = (lang === 'hi')
+    ? {t:"एक और छोटा खेल?", l:"सिर्फ़ 30 सेकंड — इससे तस्वीर और साफ़ होती है। फ़ोन बच्चे को दीजिए: हरा गोला दबाओ, लाल मत दबाओ।", play:"खेलें ▶", skip:"नतीजा देखें"}
+    : {t:"One more little game?", l:"Just 30 seconds — it makes the picture clearer. Hand the phone to your child: tap the green circle, don't tap the red one.", play:"Play ▶", skip:"See result"};
+  b.innerHTML = `<div class="taskh">${esc(s.t)}</div><p class="tasklead">${esc(s.l)}</p>
+    <div class="navrow"><button class="btn primary" id="bonusGo">${esc(s.play)}</button></div>
+    <div class="navrow"><button class="btn ghost" style="flex:1" id="bonusSkip">${esc(s.skip)}</button></div>`;
+  document.getElementById('bonusGo').onclick = ()=> renderTaskD(b, true);
+  document.getElementById('bonusSkip').onclick = ()=>{ taskData = primaryTask; submit(); };
+}
 
 /* Task A — timed read-aloud with SPEECH RECOGNITION (dyslexia: fluency & accuracy).
    The phone listens while the child reads and compares against the passage.
@@ -397,17 +418,142 @@ function renderTaskA(b){
           heard.forEach(w=>{ bag[w]=(bag[w]||0)+1; });
           let matched = 0;
           target.forEach(w=>{ if(bag[w]>0){ matched++; bag[w]--; } });
+          const wcpm = Math.round(words/(seconds/60));
+          const accuracyPct = Math.round(100*matched/target.length);
+          const oralProb = studyProb("oral", {reading_wpm:wcpm, accuracy_pct:accuracyPct,
+            errors_permin: Math.round(((target.length-matched)/(seconds/60))*10)/10});
           finishTask({type:"reading", words:words, seconds:seconds,
-            wcpm: Math.round(words/(seconds/60)),
+            wcpm: wcpm,
             speechRecognized:true,
             wordsReadCorrectly: matched,
-            accuracyPct: Math.round(100*matched/target.length)});
+            accuracyPct: accuracyPct,
+            researchModel: oralProb==null ? undefined : {key:"oral", prob:oralProb,
+              model:"oral_reading_model from the LearningMirror study (AUC 0.737); unmeasured prosody features imputed at training means"}});
         } else {
           strugglesFallback(seconds);
         }
       }, 800);
     }
   };
+}
+
+/* ---------- TRAINED HANDWRITING CNN (TensorFlow.js) ---------- */
+let hwModel = null, hwClasses = null, hwDataUrl = null;
+function loadScript(src){ return new Promise((res, rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+async function loadHwModel(){
+  if(hwModel) return true;
+  try{
+    if(typeof tf === "undefined") await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js");
+    hwModel = await tf.loadLayersModel("tfjs_model/model.json");
+    hwClasses = await (await fetch("tfjs_model/class_names.json")).json();
+    return true;
+  }catch(e){ hwModel = null; return false; }
+}
+function segmentLetters(img){
+  const maxW = 1000, sc = Math.min(1, maxW/img.width);
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
+  const cx = cv.getContext('2d');
+  cx.drawImage(img, 0, 0, cv.width, cv.height);
+  const W = cv.width, H = cv.height;
+  const px = cx.getImageData(0, 0, W, H).data;
+  const gray = new Uint8Array(W*H);
+  const hist = new Array(256).fill(0);
+  for(let i=0;i<W*H;i++){ const g = (px[i*4]*0.3 + px[i*4+1]*0.59 + px[i*4+2]*0.11)|0; gray[i]=g; hist[g]++; }
+  let total=W*H, sum=0; for(let t=0;t<256;t++) sum += t*hist[t];
+  let sumB=0, wB=0, best=0, thr=127;
+  for(let t=0;t<256;t++){
+    wB += hist[t]; if(!wB) continue;
+    const wF = total-wB; if(!wF) break;
+    sumB += t*hist[t];
+    const mB = sumB/wB, mF = (sum-sumB)/wF, v = wB*wF*(mB-mF)*(mB-mF);
+    if(v>best){ best=v; thr=t; }
+  }
+  const bin = new Uint8Array(W*H);
+  for(let i=0;i<W*H;i++) bin[i] = gray[i] < thr ? 1 : 0;
+  const seen = new Uint8Array(W*H); const boxes = [];
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const i0 = y*W+x;
+    if(!bin[i0] || seen[i0]) continue;
+    let minX=x, maxX=x, minY=y, maxY=y, area=0;
+    const stack=[i0]; seen[i0]=1;
+    while(stack.length){
+      const i = stack.pop(); area++;
+      const iy=(i/W)|0, ix=i%W;
+      if(ix<minX)minX=ix; if(ix>maxX)maxX=ix; if(iy<minY)minY=iy; if(iy>maxY)maxY=iy;
+      const nb=[i-1,i+1,i-W,i+W];
+      for(const n of nb){ if(n>=0 && n<W*H && bin[n] && !seen[n] && Math.abs((n%W)-ix)<=1){ seen[n]=1; stack.push(n); } }
+    }
+    const bw=maxX-minX+1, bh=maxY-minY+1;
+    if(bw>=8 && bh>=12 && bh<=H*0.6 && area>=50 && bw/bh<8 && bh/bw<8)
+      boxes.push({x:minX, y:minY, w:bw, h:bh, area:area});
+  }
+  boxes.sort((a,b)=>b.area-a.area);
+  return {canvas:cv, boxes:boxes.slice(0,40)};
+}
+async function analyseHandwriting(){
+  const ok = await loadHwModel();
+  if(!ok || !hwDataUrl) return null;
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const seg = segmentLetters(img);
+        const canvas = seg.canvas, boxes = seg.boxes;
+        if(!boxes.length){ resolve({lettersAnalysed:0, note:"no letters detected"}); return; }
+        const crops = [];
+        for(const b of boxes){
+          const pad = Math.round(Math.max(b.w,b.h)*0.15);
+          const side = Math.max(b.w,b.h) + 2*pad;
+          const c2 = document.createElement('canvas'); c2.width=96; c2.height=96;
+          const c2x = c2.getContext('2d');
+          c2x.fillStyle="#fff"; c2x.fillRect(0,0,96,96);
+          const dx = (side-b.w)/2, dy = (side-b.h)/2;
+          c2x.drawImage(canvas, b.x, b.y, b.w, b.h, dx*96/side, dy*96/side, b.w*96/side, b.h*96/side);
+          const d = c2x.getImageData(0,0,96,96).data;
+          const arr = new Float32Array(96*96);
+          for(let i=0;i<96*96;i++){ const g=(d[i*4]*0.3+d[i*4+1]*0.59+d[i*4+2]*0.11); arr[i] = 255-g; }
+          crops.push(arr);
+        }
+        const t = tf.tidy(()=> tf.tensor(crops).reshape([crops.length,96,96,1]));
+        hwModel.predict(t).array().then(preds=>{
+          t.dispose();
+          const counts = {}; hwClasses.forEach(c=>counts[c]=0);
+          let confSum = 0;
+          preds.forEach(p=>{ const k = p.indexOf(Math.max(...p)); counts[hwClasses[k]]++; confSum += Math.max(...p); });
+          const n = preds.length;
+          resolve({
+            lettersAnalysed: n,
+            counts: counts,
+            reversalPct: Math.round(100*(counts["Reversal"]||0)/n),
+            correctedPct: Math.round(100*(counts["Corrected"]||0)/n),
+            avgConfidence: Math.round(100*confSum/n),
+            model: "custom CNN (browser), trained on Synthetic Dyslexia Handwriting Dataset"
+          });
+        }).catch(()=>resolve(null));
+      }catch(e){ resolve(null); }
+    };
+    img.src = hwDataUrl;
+  });
+}
+
+/* ---------- RESEARCH STUDY MODELS (logistic regression, from the paper) ---------- */
+function sigmoid(z){ return 1/(1+Math.exp(-z)); }
+function studyProb(key, feats){
+  const M = (typeof STUDY_MODELS !== "undefined") && STUDY_MODELS[key];
+  if(!M) return null;
+  let z = M.intercept;
+  M.features.forEach((f,i)=>{
+    let v = feats[f];
+    if(v === undefined || v === null || isNaN(v)) v = M.impute[i];   // missing → training mean (no push either way)
+    z += M.coef[i] * ((v - M.mean[i]) / M.scale[i]);
+  });
+  return Math.round(sigmoid(z)*1000)/1000;
+}
+function fuseProbs(parts){   // AUC-weighted late fusion, as in the study
+  let num=0, den=0;
+  for(const p of parts){ if(p && p.prob != null && STUDY_AUC[p.key]){ num += STUDY_AUC[p.key]*p.prob; den += STUDY_AUC[p.key]; } }
+  return den ? Math.round((num/den)*1000)/1000 : null;
 }
 
 /* Task B — handwriting photo (dysgraphia: vision-model analysis) */
@@ -495,21 +641,20 @@ function renderTaskC(b){
   };
 }
 
-/* Task D — go/no-go tap game (attention: RT variability, wrong taps) */
-function renderTaskD(b){
-  b.innerHTML = `<div class="taskh">${esc(tt().D_title)}</div>
-    <p class="tasklead">${esc(tt().D_lead)}</p>
-    <div class="navrow"><button class="btn primary" id="gGo">${esc(tt().D_go)}</button></div>
-    <div class="navrow">${skipBtn()}</div>`;
-  document.getElementById('gGo').onclick = ()=>{
+/* Task D — go/no-go tap game (attention: RT variability, wrong taps).
+   Computes the study's reaction_time_model risk indicator in-browser.
+   bonus=true → runs as the second modality after another task, then fuses. */
+function renderTaskD(b, bonus){
+  function startGame(){
     b.innerHTML = `<p class="tasklead" style="text-align:center">${esc(tt().D_running)}</p>
       <div class="gamewrap"><button class="gamecircle idle" id="circle"></button></div>
       <div class="gamestat" id="gLeft"></div>`;
     const circle = document.getElementById('circle');
     const trials = 18;
     let n = 0, cur = null, shownAt = 0, tapped = false;
-    const stats = {hits:0, misses:0, falseTaps:0, rts:[]};
+    const stats = {hits:0, misses:0, falseTaps:0, rts:[], clicks:0};
     circle.onclick = ()=>{
+      stats.clicks++;
       if(cur==="green" && !tapped){ tapped=true; stats.hits++; stats.rts.push(Date.now()-shownAt); circle.className="gamecircle idle"; }
       else if(cur==="red" && !tapped){ tapped=true; stats.falseTaps++; circle.className="gamecircle idle"; }
     };
@@ -517,7 +662,24 @@ function renderTaskD(b){
       if(n >= trials){
         const mean = stats.rts.length ? Math.round(stats.rts.reduce((a,v)=>a+v,0)/stats.rts.length) : null;
         const sd = stats.rts.length>1 ? Math.round(Math.sqrt(stats.rts.map(r=>(r-mean)**2).reduce((a,v)=>a+v,0)/stats.rts.length)) : null;
-        finishTask({type:"attention", trials:trials, hits:stats.hits, misses:stats.misses, falseTaps:stats.falseTaps, meanRT_ms:mean, rtSD_ms:sd});
+        const lapses = stats.rts.filter(r=>r>1000).length;
+        const rtProb = (mean!=null) ? studyProb("rt", {rt_mean_ms:mean, rt_sd_ms:sd, rt_cv:(sd!=null&&mean)?sd/mean:undefined,
+          accuracy: (stats.hits+stats.misses) ? stats.hits/(stats.hits+stats.misses) : undefined,
+          misses:stats.misses, clicks_total:stats.clicks, lapses_gt1s:lapses}) : null;
+        const data = {type:"attention", trials:trials, hits:stats.hits, misses:stats.misses, falseTaps:stats.falseTaps,
+          meanRT_ms:mean, rtSD_ms:sd, lapses_gt1s:lapses,
+          researchModel: rtProb==null ? undefined : {key:"rt", prob:rtProb,
+            model:"reaction_time_model from the LearningMirror study (AUC 0.607)"}};
+        if(bonus){
+          primaryTask.bonusAttention = data;
+          const parts = [primaryTask.researchModel, data.researchModel].filter(Boolean);
+          const fused = fuseProbs(parts);
+          if(fused != null) primaryTask.fusion = {score:fused, from:parts.map(p=>p.key),
+            method:"AUC-weighted late fusion of study models (study: fusion AUC 0.842 vs best single 0.754)"};
+          taskData = primaryTask; submit();
+        } else {
+          finishTask(data);
+        }
         return;
       }
       n++;
@@ -534,7 +696,13 @@ function renderTaskD(b){
       }, 850);
     }
     trial();
-  };
+  }
+  if(bonus){ startGame(); return; }
+  b.innerHTML = `<div class="taskh">${esc(tt().D_title)}</div>
+    <p class="tasklead">${esc(tt().D_lead)}</p>
+    <div class="navrow"><button class="btn primary" id="gGo">${esc(tt().D_go)}</button></div>
+    <div class="navrow">${skipBtn()}</div>`;
+  document.getElementById('gGo').onclick = startGame;
 }
 
 /* ---------- FINAL ANALYSIS ---------- */
@@ -549,6 +717,7 @@ TASK DATA (weigh together with the questionnaire; if skipped, rely on the questi
 - handwriting: an image of the child copying a known sentence is attached. Examine it for letter reversals/mirroring, very uneven letter size, floating above/below the line, unusual spacing, omitted letters or matras, overall legibility. Describe what you see in plain parent language. If more than about a quarter is unreadable, that strongly supports a writing-difficulty pattern. If "modelFindings" is present, it comes from a custom CNN classifier (trained on ~138,000 handwriting samples, classes Normal/Reversal/Corrected) that analysed each detected letter: use lettersAnalysed, counts and reversalPct as a second opinion alongside your own reading of the image. The model is letter-level and approximate — if it conflicts with what you clearly see, trust your own reading and say so gently.
 - maths: per-item correctness and response times (ms). Many errors on dot-comparison (magnitude) items, or very slow/erratic times on simple sums for age, support a maths-difficulty pattern.
 - attention: go/no-go game — hits, misses, falseTaps, mean reaction time and its variability (rtSD). Many false taps and highly variable reaction times support an attention-difficulty pattern.
+- researchModel (may appear inside any task): a 0-1 risk-indicator probability from the project's own research study models (logistic regression trained in the LearningMirror multi-modal feasibility study; oral reading AUC 0.737, reaction time AUC 0.607). "fusion" combines the available modalities by AUC-weighted late fusion — the study found fusion beats any single modality (AUC 0.842 vs 0.754, p=0.044). Read >0.6 as supporting the pattern, <0.4 as not supporting, 0.4-0.6 as unclear. These are screening indicators, never diagnosis; weigh them alongside everything else.
 
 HARD RULES:
 - Write in plain language a parent with Class 10 education understands. No jargon, no scary words. Never say "DSM", "disorder", "diagnosis", "clinical".
@@ -683,7 +852,7 @@ function renderResources(){
 function restart(){
   childAge=null; phase="core"; routedSet=null; idx=0;
   coreAnswers=new Array(CORE.length).fill(null); setAnswers=[]; lastResult=null;
-  taskData=null; taskImage=null;
+  taskData=null; taskImage=null; bonusOffered=false; primaryTask=null;
   renderHome();
   show('home');
 }

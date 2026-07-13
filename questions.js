@@ -279,24 +279,26 @@ const TASKTEXT = {
 };
 
 const TASKCONTENT = {
+  /* hi/en have 3 variants each (picked at random so retests differ).
+     Other languages get one AI-translated variant. */
   passages:{
-    0:{hi:"एक बिल्ली चटाई पर बैठी थी। उसने एक लाल गेंद देखी। बिल्ली दौड़ी और दिन भर गेंद से खेली।",
-       en:"The cat sat on a mat. It saw a red ball. The cat ran fast and played with the ball all day."},
-    1:{hi:"रवि अपनी माँ के साथ बाज़ार गया। उसे एक नीली पतंग चाहिए थी। दुकान में हर रंग की पतंगें थीं। रवि ने सबसे अच्छी पतंग चुनी और शाम तक पार्क में उड़ाई।",
-       en:"Ravi went to the market with his mother. He wanted a blue kite. The shop had kites of every colour. Ravi chose the best one and flew it in the park till the sun went down."}
+    0:{hi:["एक बिल्ली चटाई पर बैठी थी। उसने एक लाल गेंद देखी। बिल्ली दौड़ी और दिन भर गेंद से खेली।",
+           "एक छोटी चिड़िया पेड़ पर बैठी थी। उसने एक बड़ा आम देखा। चिड़िया नीचे उड़ी और मज़े से खा गई।",
+           "रिया के पास एक छोटा कुत्ता है। कुत्ते को उछलना और दौड़ना पसंद है। रिया और कुत्ता धूप में खेलते हैं।"],
+       en:["The cat sat on a mat. It saw a red ball. The cat ran fast and played with the ball all day.",
+           "A little bird sat on a tree. It saw a big sweet mango. The bird flew down and ate it happily.",
+           "Ria has a small dog. The dog likes to jump and run. Ria and the dog play in the sun."]},
+    1:{hi:["रवि अपनी माँ के साथ बाज़ार गया। उसे एक नीली पतंग चाहिए थी। दुकान में हर रंग की पतंगें थीं। रवि ने सबसे अच्छी पतंग चुनी और शाम तक पार्क में उड़ाई।",
+           "मीरा को समुद्र की किताबें पढ़ना पसंद है। एक दिन उसे किनारे पर एक सीप मिली। उसने उसे बस्ते में रखा और अपनी पक्की सहेली को दिखाया।",
+           "अर्जुन ने बग़ीचे में एक छोटा बीज बोया। वह रोज़ सुबह स्कूल से पहले उसे पानी देता था। कई हफ़्तों बाद एक पीला फूल खिला और अर्जुन को बहुत गर्व हुआ।"],
+       en:["Ravi went to the market with his mother. He wanted a blue kite. The shop had kites of every colour. Ravi chose the best one and flew it in the park till the sun went down.",
+           "Meera loves to read books about the sea. One day she found a shell on the beach. She kept it in her school bag and showed it to her best friend.",
+           "Arjun planted a small seed in the garden. He watered it every morning before school. After many weeks a yellow flower opened, and Arjun felt very proud."]}
   },
   copySentence:{
-    0:{hi:"बड़ा कुत्ता तेज़ दौड़ा।", en:"The big dog ran fast."},
-    1:{hi:"मैं रोज़ सुबह पाठशाला जाता हूँ।", en:"My friend plays cricket every Sunday evening."}
-  },
-  maths:{
-    0:[ {t:"dots", a:3, b:7}, {t:"dots", a:6, b:4},
-        {t:"sum", q:"2 + 3", opts:[4,5,6], ans:5},
-        {t:"sum", q:"6 − 2", opts:[4,3,5], ans:4},
-        {t:"sum", q:"3 + 4", opts:[6,7,8], ans:7} ],
-    1:[ {t:"dots", a:9, b:12}, {t:"dots", a:13, b:8},
-        {t:"sum", q:"7 + 8", opts:[15,14,16], ans:15},
-        {t:"sum", q:"24 − 9", opts:[15,13,16], ans:15},
-        {t:"sum", q:"6 × 3", opts:[18,12,21], ans:18} ]
+    0:{hi:["बड़ा कुत्ता तेज़ दौड़ा।","मेरी बिल्ली को दूध पसंद है।","हम पार्क में खेलते हैं।"],
+       en:["The big dog ran fast.","My cat likes warm milk.","We play in the park."]},
+    1:{hi:["मैं रोज़ सुबह पाठशाला जाता हूँ।","जयपुर की गाड़ी सुबह नौ बजे छूटती है।","दादी बारिश की रातों में कहानियाँ सुनाती हैं।"],
+       en:["My friend plays cricket every Sunday evening.","The train to Jaipur leaves at nine in the morning.","Grandmother tells us stories on rainy nights."]}
   }
 };
