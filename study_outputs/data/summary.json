@@ -1,0 +1,19 @@
+{
+  "n": 120,
+  "n_pos": 57,
+  "n_neg": 63,
+  "single_best": "handwriting_logreg",
+  "single_best_auc": 0.754,
+  "fusion_best": "fusion_early_logreg",
+  "fusion_best_auc": 0.842,
+  "delong_z": 2.013,
+  "delong_p": 0.0442,
+  "fn_rate_single": 0.404,
+  "fn_rate_fusion": 0.298,
+  "robustness": {
+    "all three": 0.759,
+    "no handwriting": 0.637,
+    "no oral": 0.71,
+    "no reaction": 0.79
+  }
+}
