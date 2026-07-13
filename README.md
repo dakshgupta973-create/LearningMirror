@@ -19,6 +19,7 @@ Built for the AI Fellowship for Global Young Innovators 2026 (The Innovation Sto
    - Maths: timed number game → response times + error patterns
    - Attention: 30-second go/no-go tap game → reaction-time variability, false taps
 5. **Result** — plain-language, strengths-first screening result with home steps, free helplines (Tele MANAS 14416, KIRAN, Childline 1098), and a reminder to re-check after 8–12 weeks. Always framed as "patterns often linked with…", never a diagnosis.
+See study_outputs/ for the multi-modal fusion research (paper, code, results).
 
 ## The trained model
 
