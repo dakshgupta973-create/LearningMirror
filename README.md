@@ -8,6 +8,10 @@ Built for the AI Fellowship for Global Young Innovators 2026 (The Innovation Sto
 
 10–15% of school-age children in India have an SLD (dyslexia, dysgraphia, dyscalculia), but fewer than 5% are ever diagnosed. Professional screening costs ₹3,000–15,000, requires a psychologist, and is mostly available only in cities. The critical intervention window (ages 6–12) closes while families search for answers.
 
+## Research: Multi-Modal Fusion Feasibility Study
+
+This repository also contains the research behind LearningMirror, in the study_outputs/ folder. The study tests whether combining three weak learning-related signals — handwriting, oral reading, and reaction time — screens for learning-disability risk more effectively than any single signal alone. Using a real public handwriting dataset (Drotár & Dobeš 2020, 120 children) plus two literature-grounded synthetic modalities, the multi-modal fusion model reached AUC 0.842 versus 0.754 for the best single modality (DeLong test, p = 0.044), and reduced missed at-risk children (false negatives) from 40.4% to 29.8% at an equal false-alarm rate. Explainable AI (SHAP) attributes the result 50% to handwriting, 31% to oral reading, and 19% to reaction time. The folder includes the full paper, all code, figures, and the trained models (study_outputs/models/). This is a feasibility/methodology study and a screening tool only — not a diagnostic tool. The oral-reading and reaction-time data are synthetic, so results demonstrate the method, not a validated clinical claim.
+
 ## How it works
 
 1. **Common core** — the parent answers 6 general observation questions. No disorder is named anywhere before the result, to avoid biasing the parent.
