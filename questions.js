@@ -193,9 +193,7 @@ const RESOURCES = {
   hi:{
     helplines:[
       {t:"टेली मानस (सरकारी)", s:"मन और सीखने से जुड़ी बातों के लिए मुफ़्त, 24×7 फ़ोन सहायता।", tel:"14416", disp:"14416"},
-      {t:"KIRAN हेल्पलाइन (सरकारी)", s:"मानसिक स्वास्थ्य के लिए मुफ़्त, 24×7, कई भाषाओं में।", tel:"18005990019", disp:"1800-599-0019"},
-      {t:"चाइल्डलाइन", s:"बच्चों से जुड़ी किसी भी मदद के लिए मुफ़्त राष्ट्रीय हेल्पलाइन।", tel:"1098", disp:"1098"},
-      {t:"महाराष्ट्र डिस्लेक्सिया एसोसिएशन", s:"सीखने की कठिनाइयों के लिए मुफ़्त हेल्पलाइन — कॉल या WhatsApp।", tel:"8448448996", disp:"844-844-8996"}
+      {t:"चाइल्डलाइन", s:"बच्चों से जुड़ी किसी भी मदद के लिए मुफ़्त राष्ट्रीय हेल्पलाइन।", tel:"1098", disp:"1098"}
     ],
     places:[
       {t:"मद्रास डिस्लेक्सिया एसोसिएशन (चेन्नई)", s:"बच्चों के लिए उपचारात्मक मदद और माता-पिता का मार्गदर्शन। वेबसाइट: mdachennai.com"},
@@ -208,9 +206,7 @@ const RESOURCES = {
   en:{
     helplines:[
       {t:"Tele MANAS (government)", s:"Free, 24×7 phone support for mind and learning concerns.", tel:"14416", disp:"14416"},
-      {t:"KIRAN helpline (government)", s:"Free, 24×7 mental-health support in many languages.", tel:"18005990019", disp:"1800-599-0019"},
-      {t:"Childline", s:"Free national helpline for any concern about a child.", tel:"1098", disp:"1098"},
-      {t:"Maharashtra Dyslexia Association", s:"Free helpline for learning difficulties — call or WhatsApp.", tel:"8448448996", disp:"844-844-8996"}
+      {t:"Childline", s:"Free national helpline for any concern about a child.", tel:"1098", disp:"1098"}
     ],
     places:[
       {t:"Madras Dyslexia Association (Chennai)", s:"Remedial help for children and guidance for parents. Website: mdachennai.com"},
@@ -240,7 +236,7 @@ const TASKTEXT = {
     A_strug:"कितने शब्दों पर बच्चा अटका?",
     A_strugOpts:["0–2 शब्द","3–5 शब्द","6 या ज़्यादा"],
     B_title:"लिखावट की छोटी जाँच",
-    B_lead:"नीचे का वाक्य अपने बच्चे से काग़ज़ पर लिखवाइए। फिर उस काग़ज़ की फ़ोटो खींचकर यहाँ डालिए।",
+    B_lead:"नीचे का वाक्य अपने बच्चे से काग़ज़ पर लिखवाइए। फिर उस काग़ज़ की फ़ोटो खींचकर यहाँ डालिए। यह फ़ोटो जाँच के लिए एक सुरक्षित AI सेवा को भेजी जाती है और कहीं सेव नहीं होती।",
     B_upload:"📷 फ़ोटो लीजिए / चुनिए",
     B_ready:"फ़ोटो तैयार है — आगे बढ़िए",
     C_title:"गिनती का छोटा खेल",
@@ -263,7 +259,7 @@ const TASKTEXT = {
     A_strug:"How many words did your child get stuck on?",
     A_strugOpts:["0–2 words","3–5 words","6 or more"],
     B_title:"A short handwriting check",
-    B_lead:"Ask your child to copy the sentence below on paper. Then take a photo of the page and add it here.",
+    B_lead:"Ask your child to copy the sentence below on paper. Then take a photo of the page and add it here. The photo is analysed by a secure AI service and is not stored anywhere.",
     B_upload:"📷 Take / choose photo",
     B_ready:"Photo ready — continue",
     C_title:"A short number game",

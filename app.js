@@ -84,73 +84,79 @@ async function ensureLang(code){
   lastLangError = "";
   if(UI[code]) return true;
   try{
-    const cached = localStorage.getItem("lm_tr1_"+code);
+    const cached = localStorage.getItem("lm_tr2_"+code);
     if(cached){ mergeLang(code, JSON.parse(cached)); return true; }
   }catch(e){}
   if(!aiReady()) return false;
   const L = LANGS.find(x=>x.code===code); if(!L) return false;
-  const bundle = {
+
+  const sys = `You translate a parenting app about children's learning into ${L.name}. Translate EVERY string value in the JSON the user sends into simple, warm, everyday ${L.name} that a parent with basic schooling understands — the register a kind school teacher would use, not formal or literary language. Keep the exact same JSON structure, keys, and array lengths. Do not translate: the name "LearningMirror", phone numbers, "API", emoji, or symbols like ▶ ✓ 📞. Keep helpline names recognisable (transliterate). Reading passages and copy sentences should be culturally natural in ${L.name}, age-appropriate, and roughly the same length — adapt rather than translate word-for-word. Return ONLY the JSON.`;
+  const part1 = {
     ui: UI.en,
     core: CORE.map(q=>q.en),
-    sets: {A:SETS.A.map(q=>q.en), B:SETS.B.map(q=>q.en), C:SETS.C.map(q=>q.en), D:SETS.D.map(q=>q.en)},
+    sets: {A:SETS.A.map(q=>q.en), B:SETS.B.map(q=>q.en), C:SETS.C.map(q=>q.en), D:SETS.D.map(q=>q.en)}
+  };
+  const part2 = {
     task: TASKTEXT.en,
     passages: {"0":TASKCONTENT.passages[0].en, "1":TASKCONTENT.passages[1].en},
     copy: {"0":TASKCONTENT.copySentence[0].en, "1":TASKCONTENT.copySentence[1].en},
     resources: RESOURCES.en
   };
-  try{
+  const progEl = document.getElementById('loadSub');
+  const prog = {done:0, total:9500};
+  function tick(n){
+    prog.done += n;
+    if(progEl) progEl.textContent = "Translating… " + Math.min(99, Math.round(100*prog.done/prog.total)) + "%";
+  }
+  async function streamPart(bundle){
     const ctrl = new AbortController();
-    const killer = setTimeout(()=>ctrl.abort(), 360000);   // hard stop after 6 min
+    const killer = setTimeout(()=>ctrl.abort(), 300000);
     const res = await fetch(aiUrl(),{
-      method:"POST", signal:ctrl.signal,
-      headers: aiHeaders(),
-      body:JSON.stringify({
-        model:MODEL, max_tokens:12000, stream:true,
-        system:`You translate a parenting app about children's learning into ${L.name}. Translate EVERY string value in the JSON the user sends into simple, warm, everyday ${L.name} that a parent with basic schooling understands — the register a kind school teacher would use, not formal or literary language. Keep the exact same JSON structure, keys, and array lengths. Do not translate: the name "LearningMirror", phone numbers, "API", emoji, or symbols like ▶ ✓ 📞. Keep helpline names recognisable (transliterate). Reading passages and copy sentences should be culturally natural in ${L.name}, age-appropriate, and roughly the same length — adapt rather than translate word-for-word. Return ONLY the JSON.`,
-        messages:[{role:"user", content:JSON.stringify(bundle)}]
-      })
+      method:"POST", signal:ctrl.signal, headers: aiHeaders(),
+      body:JSON.stringify({model:MODEL, max_tokens:9000, stream:true, temperature:0, system:sys,
+        messages:[{role:"user", content:JSON.stringify(bundle)}]})
     });
     if(!res.ok){
       clearTimeout(killer);
       let detail = "HTTP "+res.status;
-      try{ const eb = await res.json(); detail += ": "+((eb.error&&eb.error.message)||JSON.stringify(eb)).slice(0,200); }catch(e){}
-      lastLangError = detail;
-      return false;
+      try{ const eb = await res.json(); detail += ": "+((eb.error&&eb.error.message)||"").slice(0,150); }catch(e){}
+      throw new Error(detail);
     }
-    // read the stream chunk by chunk, showing live progress
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "", txt = "";
-    const progEl = document.getElementById('loadSub');
     while(true){
-      const {done, value} = await reader.read();
-      if(done) break;
-      buf += dec.decode(value, {stream:true});
+      const r = await reader.read();
+      if(r.done) break;
+      buf += dec.decode(r.value, {stream:true});
       const lines = buf.split("\n");
       buf = lines.pop();
       for(const line of lines){
         if(!line.startsWith("data:")) continue;
         try{
           const j = JSON.parse(line.slice(5).trim());
-          if(j.type==="content_block_delta" && j.delta && j.delta.text) txt += j.delta.text;
+          if(j.type==="content_block_delta" && j.delta && j.delta.text){ txt += j.delta.text; tick(j.delta.text.length); }
         }catch(e){}
       }
-      if(progEl) progEl.textContent = "Translating… "+Math.round(txt.length/10)/100+"k done";
     }
     clearTimeout(killer);
     txt = txt.slice(txt.indexOf("{"), txt.lastIndexOf("}")+1);
-    const tr = JSON.parse(txt);
+    return JSON.parse(txt);
+  }
+  try{
+    const parts = await Promise.all([streamPart(part1), streamPart(part2)]);
+    const tr = Object.assign({}, parts[0], parts[1]);
     mergeLang(code, tr);
-    try{ localStorage.setItem("lm_tr1_"+code, JSON.stringify(tr)); }catch(e){}
+    try{ localStorage.setItem("lm_tr2_"+code, JSON.stringify(tr)); }catch(e){}
     return true;
-  }catch(e){ lastLangError = String(e).slice(0,200); return false; }
+  }catch(e){ lastLangError = String(e.message||e).slice(0,200); return false; }
 }
 
 async function setLang(l){
   if(l === lang) return;
   if(!UI[l]){
     let cached = false;
-    try{ cached = !!localStorage.getItem("lm_tr1_"+l); }catch(e){}
+    try{ cached = !!localStorage.getItem("lm_tr2_"+l); }catch(e){}
     if(!cached && !aiReady()){
       renderKeyPrompt(()=>{ show('home'); setLang(l); });
       renderLangSel();
@@ -282,7 +288,7 @@ async function routeToSet(){
         method:"POST", signal:ctrl.signal,
         headers: aiHeaders(),
         body:JSON.stringify({
-          model:MODEL, max_tokens:60,
+          model:MODEL, max_tokens:60, temperature:0,
           system:'You route a learning-difficulties screening. Based on 6 parent answers, pick which question set the parent should get next: "A" (reading difficulties), "B" (writing difficulties), "C" (maths difficulties), "D" (attention difficulties). Weigh the area-specific signals most; general signals (memory, teacher concern) support the strongest area. Reply with ONLY JSON: {"set":"A"}',
           messages:[{role:"user", content:`Child age: ${childAge}. Parent answers:\n${coreSummaryForAI()}\nWhich set?`}]
         })
@@ -706,7 +712,7 @@ function renderTaskD(b, bonus){
 }
 
 /* ---------- FINAL ANALYSIS ---------- */
-const SLD_OF = {A:"dyslexia (reading)", B:"dysgraphia (writing)", C:"dyscalculia (maths)", D:"attention-related difficulty (ADHD-linked)"};
+const SLD_OF = {A:"reading difficulties", B:"writing difficulties", C:"maths difficulties", D:"attention difficulties"};
 
 const SYSTEM_PROMPT = `You are a gentle screening-analysis tool for LearningMirror, which helps parents in India notice possible signs of Specific Learning Differences (SLD) in children aged 5-10. You are NOT a doctor and you do NOT diagnose.
 
@@ -721,17 +727,19 @@ TASK DATA (weigh together with the questionnaire; if skipped, rely on the questi
 
 HARD RULES:
 - Write in plain language a parent with Class 10 education understands. No jargon, no scary words. Never say "DSM", "disorder", "diagnosis", "clinical".
-- In the "finding", DO name the specific SLD once, plainly explained — e.g. "patterns often linked with dyslexia (difficulty with reading)", "dysgraphia (difficulty with writing)", "dyscalculia (difficulty with maths)". For set D say "attention difficulties (often called ADHD)". The parent deserves the real name so they can seek help — but only here at the result, never as a diagnosis.
+- NEVER name a specific disorder (dyslexia / dysgraphia / dyscalculia / ADHD) anywhere in the result. Say only: "patterns often linked with difficulty in reading" (or writing / maths / paying attention). The professional the parent visits is the right person to name a condition.
 - NEVER say "your child has" or "is diagnosed with". ALWAYS frame as "your child shows patterns that are often linked with...".
-- If the set is D (attention), recommend talking to a children's doctor rather than an educational psychologist, and do not present attention difficulty as an SLD.
+- If the set is D (attention), recommend talking to a children's doctor rather than an educational psychologist.
 - Be warm and strengths-first. Always include genuine likely strengths.
 - Write the ENTIRE response in the language requested in the user message (Hindi or English).
 - Keep next steps practical and doable at home today, and mention gently that it helps to check again after 8-12 weeks of practising at home.
+- CONSISTENCY RULE (most important): your "flagged" decision must follow the band computed from the scores, stated in the user message. Mostly-"Never" answers = low band = flagged false and a reassuring result. Do not invent concerns that the answers do not support.
+- researchModel probabilities between 0.40 and 0.60 are inconclusive — never flag based on them alone.
 
 Return ONLY valid JSON, no extra text, in this exact shape:
 {
   "flagged": true/false,
-  "finding": "one short plain-language line naming the pattern AND the SLD, e.g. 'patterns often linked with dyslexia (difficulty with reading)'. If none, say everything looks broadly on track.",
+  "finding": "one short plain-language line naming the difficulty AREA only (reading / writing / maths / paying attention) — e.g. 'patterns often linked with difficulty in reading'. NO disorder names. If none, say everything looks broadly on track.",
   "meaning": "2-3 warm sentences explaining what this pattern means in everyday terms, reassuring and non-scary.",
   "strengths": ["3 short plain-language strengths the child is likely to have"],
   "steps": ["3 to 5 short, concrete things the parent can do at home today"],
@@ -743,8 +751,23 @@ Translate ALL of the above field values into the requested language.`;
 function buildPrompt(){
   const setLines = SETS[routedSet].map((q,i)=>`${i+1}. "${q.en}" → ${UI.en.opts[setAnswers[i]]} (score ${scoreOf(setAnswers[i])})`).join("\n");
   const setTotal = setAnswers.reduce((a,v)=>a+scoreOf(v),0);
+  const setPct = Math.round(100*setTotal/24);
+  const band = setPct>=60 ? "CLEAR pattern (flagged should normally be true)" : (setPct>=40 ? "MILD pattern (flag only with supporting task evidence)" : "NOT strongly indicated (flagged MUST be false unless the task shows a clear, specific difficulty)");
   const taskLine = taskData ? `\n\nObjective task result: ${JSON.stringify(taskData)}${taskImage ? " (handwriting image attached — analyse it)" : ""}` : "";
-  return `The parent is using the website in ${langName()}. Write your entire response in ${langName()}.\n\nChild age: ${childAge} years.\n\nGeneral observation answers:\n${coreSummaryForAI()}\n\nFocused set: ${routedSet} — screens for patterns linked with ${SLD_OF[routedSet]}.\nAnswers:\n${setLines}\nSet total: ${setTotal} of 24.${taskLine}\n\nAnalyse the overall pattern and return your screening result as JSON only.`;
+  return `The parent is using the website in ${langName()}. Write your entire response in ${langName()}.\n\nChild age: ${childAge} years.\n\nGeneral observation answers:\n${coreSummaryForAI()}\n\nFocused set: ${routedSet} — screens for patterns linked with ${SLD_OF[routedSet]}.\nAnswers:\n${setLines}\nSet total: ${setTotal} of 24 (${setPct}% — band: ${band}).${taskLine}\n\nAnalyse the overall pattern and return your screening result as JSON only.`;
+}
+
+function sanitizeResult(r){
+  const map = [
+    [/dyslexia/gi, "difficulty with reading"], [/dysgraphia/gi, "difficulty with writing"],
+    [/dyscalculia/gi, "difficulty with maths"], [/\bADHD\b/g, "attention difficulties"],
+    [/डिस्लेक्सिया/g, "पढ़ने की कठिनाई"], [/डिस्ग्राफिया/g, "लिखने की कठिनाई"], [/डिस्कैल्कुलिया/g, "गिनती की कठिनाई"],
+    [/disorder/gi, "difficulty"]
+  ];
+  const fix = s => { let t = String(s); map.forEach(p => { t = t.replace(p[0], p[1]); }); return t; };
+  ["finding","meaning","summary"].forEach(k => { if(r[k]) r[k] = fix(r[k]); });
+  ["strengths","steps","homeAdvice"].forEach(k => { if(Array.isArray(r[k])) r[k] = r[k].map(fix); });
+  return r;
 }
 
 async function submit(){
@@ -761,7 +784,7 @@ async function submit(){
       method:"POST",
       headers: aiHeaders(),
       body:JSON.stringify({
-        model:MODEL, max_tokens:1100,
+        model:MODEL, max_tokens:1100, temperature:0,
         system:SYSTEM_PROMPT,
         messages:[{role:"user", content: taskImage
           ? [{type:"image", source:{type:"base64", media_type:taskImage.media_type, data:taskImage.data}}, {type:"text", text:buildPrompt()}]
@@ -776,7 +799,7 @@ async function submit(){
     const data = await res.json();
     let txt = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text : "";
     txt = txt.replace(/```json/gi,"").replace(/```/g,"").trim();
-    const parsed = JSON.parse(txt);
+    const parsed = sanitizeResult(JSON.parse(txt));
     lastResult = parsed;
     renderResult(parsed);
     show('result');
